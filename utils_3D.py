@@ -6,12 +6,18 @@ import numpy.linalg as LA
 class Motion_Planer:
     def __init__(self, data):
         self.create_voxmap(data)
+        
     def create_voxmap(self, data, target_altitude = 2, safety_distance = 0, voxel_size=1):
         self.voxmap, self.north_offset, self.east_offset, self.alt_offset = create_voxmap(data, target_altitude = 2, safety_distance = 0, voxel_size=1)
-    def find_paths(self, voxmap_start, voxmap_goal):
-        paths, _ = a_star_3D(self.voxmap, voxmap_start, voxmap_goal)
+        self.offset = [self.north_offset, self.east_offset, self.alt_offset]
+        
+    def find_paths(self, voxmap_start, voxmap_goal, flag_offset = 1):
+        if flag_offset == 1:
+            voxmap_start = [ (i+j) for i,j in zip(voxmap_start, self.offset)]
+            voxmap_goal = [ (i+j) for i,j in zip(voxmap_goal, self.offset)]
+        paths, _ = a_star_3D(self.voxmap, heuristic, voxmap_start, voxmap_goal)
         paths_r = paths[1:0]
-        paths_r = [[i[0] + self.north_offset, i[1] + self.east_offset, i[2]+self.alt_offset] for i in paths_r]
+        paths_r = [ (i-j) for i,j in zip(paths_r, self.offset)]
         return paths_r, paths
 
 def heuristic(position, goal_position):
