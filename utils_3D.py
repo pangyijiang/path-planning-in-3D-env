@@ -1,85 +1,177 @@
 from enum import Enum
 from queue import PriorityQueue
-import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import numpy.linalg as LA
+import numpy as np
+import random
 
 class Motion_Planer:
     def __init__(self, data):
-        self.create_voxmap(data)
-        
-    def create_voxmap(self, data, target_altitude = 2, safety_distance = 0, voxel_size=1):
-        self.voxmap, self.north_offset, self.east_offset, self.alt_offset = create_voxmap(data, target_altitude = 2, safety_distance = 0, voxel_size=1)
-        self.offset = [self.north_offset, self.east_offset, self.alt_offset]
-        
-    def find_paths(self, voxmap_start, voxmap_goal, flag_offset = 1):
+        """
+        ****data descripe the buildings or obstacles****
+        data: [z, a_x,a_y, b_x,b_y, c_x,c_y, d_x,d_y, h]
+            z is botttom of the building in z-anix
+            a,b,c,d are vertices of rectangle， a = (a_x, a_y)
+            h is the height
+        """
+        self.voxmap, self.offset = create_voxmap(data)
+        #print("map_offset:", self.offset)
+    def find_paths(self, voxmap_start, voxmap_goal, flag_offset = 1, flag_virtual = 0):
         if flag_offset == 1:
-            voxmap_start = [ (i+j) for i,j in zip(voxmap_start, self.offset)]
-            voxmap_goal = [ (i+j) for i,j in zip(voxmap_goal, self.offset)]
-        paths, _ = a_star_3D(self.voxmap, heuristic, voxmap_start, voxmap_goal)
-        paths_r = paths[1:0]
-        paths_r = [ (i-j) for i,j in zip(paths_r, self.offset)]
-        return paths_r, paths
+            voxmap_start = [round(i - j) for i,j in zip(voxmap_start, self.offset)]
+            voxmap_goal = [round(i - j) for i,j in zip(voxmap_goal, self.offset)]
+        paths, _ = a_star_3D(self.voxmap, heuristic, tuple(voxmap_start), tuple(voxmap_goal))
+        paths_r = [ [i[0]+self.offset[0], i[1]+self.offset[1], i[2]+self.offset[2]] for i in paths[1:]]
+        #print("paths: ", paths)
+        #print("paths_r: ", paths_r)
+        if flag_virtual == 1:
+            # #virtualize
+            # start and end points
+            traj_s_e = np.zeros(self.voxmap.shape, dtype=np.bool)
+            traj_s_e[voxmap_start[0]][voxmap_start[1]][voxmap_start[2]] = True
+            traj_s_e[voxmap_goal[0]][voxmap_goal[1]][voxmap_goal[2]] = True
+            traj = np.zeros(self.voxmap.shape, dtype=np.bool)
+            for path in paths[1:-1]:
+                traj[path] = True
+            #combine obstacle, sratr-end points, and waypoints
+            World = self.voxmap |traj_s_e |traj
+            # set the colors of each object
+            colors = np.empty(self.voxmap.shape, dtype = object)
+            colors[self.voxmap] = 'grey'
+            colors[traj_s_e] = "black"
+            colors[traj] = "red"
+            print("Prepare to show the Virtual Worlf of motion planning")
+            #plot
+            fig = plt.figure()
+            ax = fig.gca(projection='3d')
+            ax.voxels(World, facecolors=colors, edgecolor='k')
+            plt.show()
+        return paths_r
+    def rand_points(self):
+        while True:
+            n_goal = random.randint(0, self.voxmap.shape[0] - 1)
+            e_goal = random.randint(0, self.voxmap.shape[1] - 1)
+            alt_goal = random.randint(0, self.voxmap.shape[2] - 1)
+            if self.voxmap[n_goal, e_goal, alt_goal] == 0:
+                break
+        # Voxmap goal
+        voxmap_goal = [n_goal, e_goal, alt_goal]
+        while True:
+            n_start = random.randint(0, self.voxmap.shape[0] - 1)
+            e_start = random.randint(0, self.voxmap.shape[1] - 1)
+            alt_start = random.randint(0, self.voxmap.shape[2] - 1)
+            if self.voxmap[n_start, e_start, alt_start] == 0:
+                break
+        # Voxmap start
+        voxmap_start = [n_start, e_start, alt_start]
+        voxmap_start = [round(i + j) for i,j in zip(voxmap_start, self.offset)]
+        voxmap_goal = [round(i + j) for i,j in zip(voxmap_goal, self.offset)]
+        return voxmap_goal, voxmap_start
 
 def heuristic(position, goal_position):
     return LA.norm(np.array(position) - np.array(goal_position))
 
-def create_voxmap(data, target_altitude, safety_distance, voxel_size=5):
+def create_voxmap(data, map_margin = 5, safety_distance = 0, voxel_size = 1):
+    #data: (z, a, b, c, d, h), a,b,c,d are vertices of rectangle. h is the height.
     """
     Returns a grid representation of a 3D configuration space
     based on given obstacle data and safety distance
 
-    The `target_altitude` argument sets the altitude the drone wants to fly
-    so the voxmap will be centered in that altitude.
-
-    The `voxel_size` argument sets the resolution of the voxel map.
+    The 'target_altitude': highest point + target_altitude is the height of the map.
+    The 'voxel_size' argument sets the resolution of the voxel map.
     """
-    #in case z < 0
-    z_origin = min(data[:, 2])
-    if z_origin < 0:
-        data[:, 2] = data[:, 2] - z_origin
+    # minimum and maximum coordinates
+    data = np.array(data)
+    # temp = data[:, 1][0]# + data[:, 2][0] + data[:, 3][0] + data[:, 4][0]
+    x_all = np.hstack((data[:, 1], data[:, 3], data[:, 5], data[:, 7]))
+    y_all = np.hstack((data[:, 2], data[:, 4], data[:, 6], data[:, 8]))
+    #start point
+    s_p_x = np.floor(np.min(x_all))  
+    s_p_y = np.floor(np.min(y_all))  
+    x_offset = s_p_x - map_margin
+    y_offset = s_p_y - map_margin
+    #end point
+    e_p_x = np.ceil(np.max(x_all))  
+    e_p_y = np.ceil(np.max(y_all))  
+    # z-axis
+    z_offset = np.min(data[:, 0])
 
-    # minimum and maximum north coordinates
-    north_min = np.floor(np.amin(data[:, 0] - data[:, 3]))
-    north_max = np.ceil(np.amax(data[:, 0] + data[:, 3]))
+    x_size = int(e_p_x - s_p_x + map_margin*2)
+    y_size = int(e_p_y - s_p_y + map_margin*2)
+    z_size = int(np.max(data[:, 0]- z_offset + data[:, 9]) + map_margin)
 
-    # minimum and maximum east coordinates
-    east_min = np.floor(np.amin(data[:, 1] - data[:, 4]))
-    east_max = np.ceil(np.amax(data[:, 1] + data[:, 4]))
-
-    alt_max = np.ceil(np.amax(data[:, 2] + data[:, 5]*2)) + target_altitude
-    alt_min = np.ceil(np.amin(data[:, 2]))
-    #alt_max = target_altitude#2 * target_altitude
-
-    # given the minimum and maximum coordinates we can
-    # calculate the size of the grid.
-    north_size = int(np.ceil((north_max - north_min))) // voxel_size
-    east_size = int(np.ceil((east_max - east_min))) // voxel_size
-    alt_size = int(np.ceil((alt_max - alt_min))) // voxel_size
-
-    voxmap = np.zeros((north_size, east_size, alt_size), dtype=np.bool)
+    voxmap = np.zeros((x_size, y_size, z_size), dtype=np.bool)
 
     for i in range(data.shape[0]):
-        north, east, alt, d_north, d_east, d_alt = data[i, :]
-        # fill in the voxels that are part of an obstacle with `True`
-        #
-        # i.e. grid[0:5, 20:26, 2:7] = True
+        z, a_x,a_y, b_x,b_y, c_x,c_y, d_x,d_y, h = data[i, :]
+        a = [a_x,a_y]; b = [b_x,b_y]; c = [c_x,c_y]; d = [d_x,d_y]
+        x_index, y_index = map_color_seg(a, b, c, d)
+        x_index = x_index - x_offset
+        y_index = y_index - y_offset
+        z = int(z - z_offset)
+        voxmap[x_index.astype(int), y_index.astype(int), z:(z+h)] = True
 
-        north1 = int(north - north_min - d_north - safety_distance) // voxel_size
-        east1 = int(east - east_min - d_east - safety_distance) // voxel_size
+    offset = [x_offset, y_offset, z_offset]
+    return voxmap, offset
 
-        north2 = int(np.ceil((north - north_min + d_north + safety_distance) / voxel_size))
-        east2 = int(np.ceil((east - east_min + d_east + safety_distance) / voxel_size))
-        alt2_up = int(np.ceil((alt - alt_min + d_alt*2 + safety_distance) / voxel_size))
-        alt2_down = int(np.ceil((alt -alt_min - safety_distance) / voxel_size))
+def map_color_seg(a,b,c,d):
+    def linear_k_b(point1, point2):
+        if point1[0] == point2[0]:
+            k = 0
+        else:
+            k = (point1[1] - point2[1])/(point1[0] - point2[0])
+        b = point1[1] - k*point1[0]
+        return k, b
+    ab_linear = linear_k_b(a, b)
+    bc_linear = linear_k_b(b, c)
+    cd_linear = linear_k_b(c, d)
+    da_linear = linear_k_b(d, a)
 
-        voxmap[north1:north2, east1:east2, alt2_down:alt2_up] = True
+    #start point
+    s_p_x = np.floor(np.min([a[0], b[0], c[0], d[0]]))  
+    s_p_y = np.floor(np.min([a[1], b[1], c[1], d[1]]))  
+    #end point
+    e_p_x = np.ceil(np.max([a[0], b[0], c[0], d[0]]))  
+    e_p_y = np.ceil(np.max([a[1], b[1], c[1], d[1]]))  
 
-    if z_origin < 0:
-        z_offset = alt_min - z_origin
-    else:
-        z_offset = alt_min
-    return voxmap, int(north_min), int(east_min), int(z_offset)
+    offset = [s_p_x, s_p_y]
+    size = [int(e_p_x - s_p_x), int(e_p_y - s_p_y)]
 
+    ab_map = np.zeros((size[0], size[1]))
+    bc_map = np.zeros((size[0], size[1]))
+    cd_map = np.zeros((size[0], size[1]))
+    da_map = np.zeros((size[0], size[1]))
+
+    for x in range(size[0]):
+        for y in range(size[1]):
+            #two color for ab_map
+            if (x+offset[0])*ab_linear[0] + ab_linear[1] - (y+offset[1]) >=0:
+                ab_map[x][y] = 7
+            else:
+                ab_map[x][y] = 3
+            #two color for cd_map
+            if (x+offset[0])*cd_linear[0] + cd_linear[1] - (y+offset[1]) <=0:
+                cd_map[x][y] = -7
+            else:
+                cd_map[x][y] = -3
+
+            #two color for bc_map
+            if (x+offset[0])*bc_linear[0] + bc_linear[1] - (y+offset[1]) >=0:
+                bc_map[x][y] = 19
+            else:
+                bc_map[x][y] = 37
+            #two color for da_map
+            if (x+offset[0])*da_linear[0] + da_linear[1] - (y+offset[1]) <=0:
+                da_map[x][y] = -19
+            else:
+                da_map[x][y] = -37
+    map_all = ab_map + bc_map + cd_map + da_map
+    map_all[np.nonzero(map_all)]=1
+    [x_index, y_index] = np.where(map_all == 0)
+    x_index = x_index + offset[0]
+    y_index = y_index + offset[1]
+    return x_index.astype(int), y_index.astype(int)
 
 ### 3D A*
 class Action3D(Enum):
@@ -153,7 +245,7 @@ def valid_actions_3D(voxel, current_node):
 
     return valid_actions
 
-def a_star_3D(voxel, start, goal):
+def a_star_3D(voxel, h, start, goal):
 
     path = []
     path_cost = 0
@@ -182,7 +274,7 @@ def a_star_3D(voxel, start, goal):
                 da = action.delta
                 next_node = (current_node[0] + da[0], current_node[1] + da[1], current_node[2] + da[2])
                 branch_cost = current_cost + action.cost
-                queue_cost = branch_cost + heuristic(next_node, goal)
+                queue_cost = branch_cost + h(next_node, goal)
 
                 if next_node not in visited:
                     visited.add(next_node)
