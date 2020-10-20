@@ -12,3 +12,7 @@ Note: The way to descripe the obstacles is changed to support non-rectangle obst
 ```
 python motion_planning.py
 ```
+
+# A subAlgorithm: find all the points inside the four given points
+The method is described below.
+<img src="4pints.png" width="auto" >
