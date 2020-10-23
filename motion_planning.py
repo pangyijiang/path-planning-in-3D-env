@@ -2,10 +2,9 @@ import numpy as np
 from utils_3D import Motion_Planer
 
 
-
 if __name__ == "__main__":
 
-    data = [[1, 0,20, 10,10, 20,20, 10,30, 15], [0, 1,1, 1,4, 4,4, 4,1, 17], [0, 18,-4, 24,2, 18,8, 12,2, 17]]
+    data = [[1, 10,10, 0,20, 20,20, 10,30, 15], [0, 1,1, 4,4, 1,4, 4,1, 17], [0, 18,-4, 24,2, 18,8, 12,2, 17]]
     """
     ****data descripe the buildings or obstacles****
     data: [z, a_x,a_y, b_x,b_y, c_x,c_y, d_x,d_y, h]

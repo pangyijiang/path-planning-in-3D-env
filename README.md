@@ -16,3 +16,5 @@ python motion_planning.py
 # A subAlgorithm: find all the points inside the four given points
 The method is described below.
 <img src="4pints.png" width="auto" >
+
+Note: sort the vertices with angle of vector (center-vertex)

@@ -6,6 +6,8 @@ import numpy.linalg as LA
 import numpy as np
 import random
 
+
+
 class Motion_Planer:
     def __init__(self, data):
         """
@@ -116,6 +118,13 @@ def create_voxmap(data, map_margin = 5, safety_distance = 0, voxel_size = 1):
     return voxmap, offset
 
 def map_color_seg(a,b,c,d):
+    def Sort4Points(points_4):
+        point_c = [ (a+b+c+d)/4 for a,b,c,d in zip(points_4[0], points_4[1], points_4[2], points_4[3])]
+        dic_a_p = {}
+        for point in points_4:
+            angle = np.arctan2(point[1]-point_c[1], point[0]-point_c[0])
+            dic_a_p[angle] = point
+        return [dic_a_p[k] for k in sorted(dic_a_p.keys())]
     def linear_k_b(point1, point2):
         if point1[0] == point2[0]:
             k = 0
@@ -123,6 +132,9 @@ def map_color_seg(a,b,c,d):
             k = (point1[1] - point2[1])/(point1[0] - point2[0])
         b = point1[1] - k*point1[0]
         return k, b
+
+    # the vertices should be in order
+    a,b,c,d = Sort4Points([a,b,c,d])
     ab_linear = linear_k_b(a, b)
     bc_linear = linear_k_b(b, c)
     cd_linear = linear_k_b(c, d)
