@@ -6,7 +6,25 @@ import numpy.linalg as LA
 import numpy as np
 import random
 
+def r_ints(p1, p2):
+    #return the points between the given two points
+    I = [i - j for i,j in zip(p2, p1)]
+    d = np.sqrt(np.sum(np.square(I)))
+    I = [ i/d for i in I]   #unit vector
 
+    p_set = [p1]
+    dis = np.sqrt(np.sum(np.square([i - j for i,j in zip(p1, p2)])))
+    s = 1
+    while dis >= (1.414 + 0.1):
+        p_m = [ round(i + j*s) for i,j in zip(p1, I)]
+        dis = np.sqrt(np.sum(np.square([i - j for i,j in zip(p2, p_m)])))
+        s = s + 1
+        if p_m not in p_set:
+            p_set.append(p_m)
+
+    if p2 not in p_set:
+        p_set.append(p2)
+    return p_set
 
 class Motion_Planer:
     def __init__(self, data):
@@ -19,11 +37,35 @@ class Motion_Planer:
         """
         self.voxmap, self.offset = create_voxmap(data)
         #print("map_offset:", self.offset)
-    def find_paths(self, voxmap_start, voxmap_goal, flag_offset = 1, flag_virtual = 0):
+    def find_paths(self, voxmap_start, voxmap_goal, simplify = 1, flag_offset = 1, flag_virtual = 0):
         if flag_offset == 1:
             voxmap_start = [round(i - j) for i,j in zip(voxmap_start, self.offset)]
             voxmap_goal = [round(i - j) for i,j in zip(voxmap_goal, self.offset)]
         paths, _ = a_star_3D(self.voxmap, heuristic, tuple(voxmap_start), tuple(voxmap_goal))
+        if simplify == 1:
+            num_key_points = [0]
+            num = len(paths)
+            i = 0
+            point_s = paths[0]
+            point_e = paths[1]
+            while i <= (num-1):
+                points_m = r_ints(point_s, point_e)
+                obs_r = []
+                for point in points_m:
+                    obs_r.append(self.voxmap[point[0], point[1], point[2]])
+                if True in obs_r:
+                    num_key_points.append(i)
+                    point_s = paths[i]
+                    point_e = paths[i+1]
+                    continue
+                i = i + 1
+                try:
+                    point_e = paths[i]
+                except:
+                    pass
+            num_key_points.append(num - 1)  #add the last point
+            paths_key = [ paths[i] for i in num_key_points]
+            paths_key_r = [ [i[0]+self.offset[0], i[1]+self.offset[1], i[2]+self.offset[2]] for i in paths_key[1:]]
         paths_r = [ [i[0]+self.offset[0], i[1]+self.offset[1], i[2]+self.offset[2]] for i in paths[1:]]
         #print("paths: ", paths)
         #print("paths_r: ", paths_r)
@@ -36,6 +78,9 @@ class Motion_Planer:
             traj = np.zeros(self.voxmap.shape, dtype=np.bool)
             for path in paths[1:-1]:
                 traj[path] = True
+            traj_key = np.zeros(self.voxmap.shape, dtype=np.bool)
+            for key in paths_key:
+                traj_key[key] = True
             #combine obstacle, sratr-end points, and waypoints
             World = self.voxmap |traj_s_e |traj
             # set the colors of each object
@@ -43,13 +88,17 @@ class Motion_Planer:
             colors[self.voxmap] = 'grey'
             colors[traj_s_e] = "black"
             colors[traj] = "red"
+            colors[traj_key] = "blue"
             print("Prepare to show the Virtual Worlf of motion planning")
             #plot
             fig = plt.figure()
             ax = fig.gca(projection='3d')
             ax.voxels(World, facecolors=colors, edgecolor='k')
             plt.show()
-        return paths_r
+        if simplify == 1:
+            return paths_key_r
+        else:
+            return paths_r
     def rand_points(self):
         while True:
             n_goal = random.randint(0, self.voxmap.shape[0] - 1)
